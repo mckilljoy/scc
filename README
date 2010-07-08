@@ -1,0 +1,1 @@
+A simple cassandra client with functionality that resembles the Cassandra-CLI. Just handles insert/get/delete/getSlice. Limited robustness assumes the user knows what they are doing.
