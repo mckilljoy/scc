@@ -1,73 +1,77 @@
 
 import scc.*;
 
-import java.util.List;
-
-// Thrift imports
-import org.apache.cassandra.thrift.Column;
-import org.apache.cassandra.thrift.ColumnOrSuperColumn;
-import org.apache.cassandra.thrift.ColumnParent;
-import org.apache.cassandra.thrift.ColumnPath;
-
+// Java imports
+import java.util.HashMap;
+import java.util.Collection;
 
 public class TestMain
 {
     public static void main(String args[])
+        throws CassandraException, Exception
     {
 
         SimpleCassandraClient scc = new SimpleCassandraClient();
         scc.connect( "localhost", 9160 );
 
-        testDel(scc);
+        //testDel(scc);
         //testMktStk();
+        testActive(scc);
 
         scc.disconnect();
 
     }
-    
+
+    public static void testActive( SimpleCassandraClient scc )
+        throws Exception
+    {
+
+        HashMap controlColumns = new HashMap();
+        
+        controlColumns = scc.getSlice( "Control", "MktStk", "Active" );
+
+        Collection<byte[]> columnNames = controlColumns.values();
+
+        for( byte[] symbol : columnNames )
+        {
+            System.out.println("Column " + new String(symbol));
+        }
+
+    }
+
     public static void testDel( SimpleCassandraClient scc )
+        throws Exception
     {
 
         byte[] value;
 
-        if( scc.insert("Control", "MktStk", "TickString", "AAPL", "AAPL".getBytes()) )
+        try
         {
+            scc.insert("Control", "MktStk", "TickString", "AAPL", "AAPL".getBytes());
             System.out.println("Insert succeeded");
-        }
-        else
-        {
-            System.out.println("Insert failed");
-        }
 
-        if( (value = scc.get("Control", "MktStk", "TickString", "AAPL")) != null )
-        {
+            value = scc.get("Control", "MktStk", "TickString", "AAPL");
             System.out.println( "Value: " + new String(value) );
-        }
-        else
-        {
-            System.out.println("Get failed");
-        }
 
 
-
-        if( scc.delete("Control", "MktStk", "TickString", "AAPL") )
-        {
+            scc.delete("Control", "MktStk", "TickString", "AAPL");
             System.out.println("Delete succeeded");
-        }
-        else
-        {
-            System.out.println("Delete failed");
-        }
 
-        if( (value = scc.get("Control", "MktStk", "TickString", "AAPL")) != null )
-        {
-            System.out.println( "Value: " + new String(value) );
-        }
-        else
-        {
-            System.out.println("Get failed");
-        }
 
+            try
+            {
+                value = scc.get("Control", "MktStk", "TickString", "AAPL");
+            }
+            catch( Exception e )
+            {
+                System.out.println( "Value not found (Success)" );
+            }
+        }
+        catch( Exception e )
+        {
+            System.out.println("Failure");
+            throw e;
+        }
 
     }
 
@@ -76,94 +80,59 @@ public class TestMain
 
         byte[] value;
 
-        scc.list();
-
-        scc.describe("Control");
-
-        if( (value = scc.get("Control", "MktStk", "TickString","AAPL")) != null )
+        try
         {
+            scc.list();
+
+            scc.describe("Control");
+
+
+            value = scc.get("Control", "MktStk", "TickString","AAPL");
             System.out.println( "Value: " + new String(value) );
-        }
-        else
-        {
-            System.out.println("Get failed");
-        }
 
-        if( (value = scc.get("Control", "MktStk", "TickString", "ATVI")) != null )
-        {
+            value = scc.get("Control", "MktStk", "TickString", "ATVI");
             System.out.println( "Value: " + new String(value) );
-        }
-        else
-        {
-            System.out.println("Get failed");
-        }
         
-        List<ColumnOrSuperColumn> lvalue;
+            HashMap hvalue;
 
-        if( (lvalue = scc.getSlice("Control", "MktStk", "TickString")) != null )
-        {
-            System.out.println( "Value: " + new Integer(lvalue.size()).toString() );
-        }
-        else
-        {
-            System.out.println("Get failed");
-        }
+            hvalue = scc.getSlice("Control", "MktStk", "TickString");
+            System.out.println( "Value: " + new Integer(hvalue.size()).toString() );
 
-        if( (lvalue = scc.getSlice("MktStk", "TickString", "AAPL", "20100702")) != null )
-        {
-            System.out.println( "Value: " + new Integer(lvalue.size()).toString() );
+            hvalue = scc.getSlice("MktStk", "TickString", "AAPL", "20100702");
+            System.out.println( "Value: " + new Integer(hvalue.size()).toString() );
         }
-        else
+        catch ( Exception e)
         {
-            System.out.println("Get failed");
+            System.out.println("Failure");
         }
-
     }
 
     public void test( SimpleCassandraClient scc )
     {
         System.out.println("SCC test client");
 
-        scc.connect( "localhost", 9160 );
-
-        if( scc.insert("Keyspace1", "Standard2", "aapl", "2010", "250.0".getBytes()) )
+        try
         {
+            scc.connect( "localhost", 9160 );
+
+            scc.insert("Keyspace1", "Standard2", "aapl", "2010", "250.0".getBytes());
             System.out.println("Insert succeeded");
-        }
-        else
-        {
-            System.out.println("Insert failed");
-        }
 
-        if( scc.insert("Keyspace1", "Super1", "aapl", "12:00", "2010", "250.0".getBytes()) )
-        {
+            scc.insert("Keyspace1", "Super1", "aapl", "12:00", "2010", "250.0".getBytes());
             System.out.println("Insert super succeeded");
-        }
-        else
-        {
-            System.out.println("Insert super failed");
-        }
 
-        byte[] value;
+            byte[] value;
 
-        if( (value = scc.get("Keyspace1", "Standard2", "aapl", "2010")) != null )
-        {
+            value = scc.get("Keyspace1", "Standard2", "aapl", "2010");
+            System.out.println( new String(value) );
+
+            value = scc.get("Keyspace1", "Super1", "aapl", "12:00", "2010");
             System.out.println( new String(value) );
         }
-        else
+        catch( Exception e )
         {
-            System.out.println("Get failed");
+            System.out.println("Failure");
         }
-
-        if( (value = scc.get("Keyspace1", "Super1", "aapl", "12:00", "2010")) != null )
-        {
-            System.out.println( new String(value) );
-        }
-        else
-        {
-            System.out.println("Get super failed");
-        }
-
     }
 
 }

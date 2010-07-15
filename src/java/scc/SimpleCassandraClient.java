@@ -68,22 +68,33 @@ public class SimpleCassandraClient
         this.server = server;
         this.port = port;
 
-        // Create the transport socket
-        // We only have one type of socket
-        transport = new TSocket(server, port);
-
-        // Create he protocol and thrift client
-        TBinaryProtocol binaryProtocol = new TBinaryProtocol(transport, false, false);
-        thriftClient = new Cassandra.Client(binaryProtocol);
+        TBinaryProtocol binaryProtocol;
+        
 
         try
         {
+            //
+            // Create the transport socket
+            // We only have one type of socket
+            //
+            transport = new TSocket( server, port );
+
+            //
+            // Create the protocol and thrift client
+            //
+            binaryProtocol = new TBinaryProtocol( transport, false, false );
+
+            //
+            // Create a thrift client with the protocol
+            //
+            thriftClient = new Cassandra.Client( binaryProtocol );
+
             transport.open();
         }
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " opening transport on " +
+            throw new CassandraException( "Exception opening transport on " +
                                           server + "/" +
                                           port + ": " +
                                           e.getMessage() );
@@ -98,7 +109,7 @@ public class SimpleCassandraClient
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " getting cluster name on " +
+            throw new CassandraException( "Exception getting cluster name on " +
                                           server + "/" +
                                           port  + ": " +
                                           e.getMessage() );
@@ -155,7 +166,15 @@ public class SimpleCassandraClient
                        String columnName )
         throws CassandraException
     {
-        return get( keyspace, columnFamily, key, superColumnName.getBytes(), columnName.getBytes() );
+
+        if( superColumnName == null )
+        {
+            return get( keyspace, columnFamily, key, null, columnName.getBytes() );
+        }
+        else
+        {
+            return get( keyspace, columnFamily, key, superColumnName.getBytes(), columnName.getBytes() );
+        }
     }
 
     // Yes supercolumn -- bytes version
@@ -210,7 +229,9 @@ public class SimpleCassandraClient
         */
         try
         {
-            // Perform a get(), print out the results.
+            //
+            // Create the column path and execute the get
+            //
             ColumnPath columnPath = createColumnPath(columnFamily, superColumnName, columnName);
 
             Column column = thriftClient.get(keyspace, key, columnPath, ConsistencyLevel.ONE).column;
@@ -221,7 +242,7 @@ public class SimpleCassandraClient
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " getting " +
+            throw new CassandraException( "Exception getting " +
                                           keyspace + "|" +
                                           columnFamily + "|" +
                                           key + "|" +
@@ -234,79 +255,113 @@ public class SimpleCassandraClient
     }
 
     // No super column
-    public List<ColumnOrSuperColumn> getSlice(String keyspace, String columnFamily, String key)
+    //public List<ColumnOrSuperColumn> getSlice(String keyspace, String columnFamily, String key)
+    public HashMap getSlice( String keyspace,
+                             String columnFamily,
+                             String key )
         throws CassandraException
     {
         return getSlice( keyspace, columnFamily, key, (byte[]) null);
     }
 
     // Yes super column -- string version
-    public List<ColumnOrSuperColumn> getSlice(String keyspace, String columnFamily, String key, String superColumnName)
+    public HashMap getSlice( String keyspace,
+                             String columnFamily,
+                             String key,
+                             String superColumnName )
+    //public List<ColumnOrSuperColumn> getSlice(String keyspace, String columnFamily, String key, String superColumnName)
         throws CassandraException
     {
-        return getSlice( keyspace, columnFamily, key, superColumnName.getBytes() );
+        if( superColumnName == null )
+        {
+            return getSlice( keyspace, columnFamily, key, (byte[]) null );
+        }
+        else
+        {
+            return getSlice( keyspace, columnFamily, key, superColumnName.getBytes() );
+        }
     }
 
     // Yes super column -- bytes version
-    public List<ColumnOrSuperColumn> getSlice(String keyspace, String columnFamily, String key, byte[] superColumnName)
+    // public List<ColumnOrSuperColumn> getSlice(String keyspace, String columnFamily, String key, byte[] superColumnNam)
+    public HashMap getSlice( String keyspace,
+                             String columnFamily,
+                             String key,
+                             byte[] superColumnName )
     //throws InvalidRequestException, UnavailableException, TimedOutException, TException, UnsupportedEncodingException, IllegalAccessException, NotFoundException, InstantiationException, ClassNotFoundException
         throws CassandraException
     {
 
         try
         {
+            SliceRange range = new SliceRange( new String().getBytes(),
+                                               new String().getBytes(),
+                                               true,
+                                               1000000 );
+            
+            List<ColumnOrSuperColumn> columns = null;
 
-            SliceRange range = new SliceRange(new String().getBytes(), new String().getBytes(), true, 1000000);
+            columns = thriftClient.get_slice( keyspace,
+                                              key, 
+                                              createColumnParent(columnFamily, superColumnName),
+                                              createSlicePredicate(null, range), ConsistencyLevel.ONE );
 
-            List<ColumnOrSuperColumn> columns = thriftClient.get_slice(keyspace, key, 
-                                                                       createColumnParent(columnFamily, superColumnName),
-                                                                       createSlicePredicate(null, range), ConsistencyLevel.ONE);
-            /*
-            int size = columns.size();
-            System.out.println(size);
+            //
+            // Our return object
+            //            
+            HashMap map = new HashMap();
 
-            // Print out super columns or columns.
-            for (ColumnOrSuperColumn cosc : columns)
+            //
+            // Put the slice into a hashmap we can return
+            //
+            for( ColumnOrSuperColumn cosc : columns )
             {
-                if (cosc.isSetSuper_column())
+
+                //
+                // If this is a super column, we need to recurse
+                //
+                if( cosc.isSetSuper_column() )
                 {
+
                     SuperColumn superColumn = cosc.super_column;
 
-                    System.out.printf("=> (super_column=%s,",
-                                      //formatSuperColumnName(keyspace, columnFamily, superColumn));
-                                      superColumn);
+                    //
+                    // This hashmap holds the sc->c mapping
+                    //
+                    HashMap submap = new HashMap();
 
-                    for (Column col : superColumn.getColumns())
+                    //
+                    // Iterate through the sub column
+                    for( Column col : superColumn.getColumns() )
                     {
-                        System.out.printf("\n     (column=%s, value=%s, timestamp=%d)", 
-                                          //formatSubcolumnName(keyspace, columnFamily, col),
-                                          col,
-                                          new String(col.value, "UTF-8"), 
-                                          col.timestamp);
+                        submap.put( new String( col.name ), col.value);
                     }
 
-                    System.out.println(")"); 
+                    //
+                    // Stick this sub mapping into out return object
+                    //
+                    map.put( new String( superColumn.name ), submap );
+
                 }
                 else
                 {
+                    //
+                    // Insert a simple name/value pair into the result
+                    //
                     Column column = cosc.column;
-                    System.out.printf("=> (column=%s, value=%s, timestamp=%d)\n", 
-                                      //formatColumnName(keyspace, columnFamily, column),
-                                      column,
-                                      new String(column.value, "UTF-8"), 
-                                      column.timestamp);
+
+                    map.put( new String( column.name ), column.value );
+
                 }
             }
-    
-            System.out.println("Returned " + size + " results.");
-            */
-            return columns;
+            
+            return map;
 
         }
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " getting slice " +
+            throw new CassandraException( "Exception getting slice " +
                                           keyspace + "|" +
                                           columnFamily + "|" +
                                           key + "|" +
@@ -354,7 +409,15 @@ public class SimpleCassandraClient
     //throws TException, InvalidRequestException, UnavailableException, TimedOutException, UnsupportedEncodingException
         throws CassandraException
     {
-        insert( keyspace, columnFamily, key, superColumnName.getBytes(), columnName.getBytes(), value );
+        if( superColumnName == null )
+        {
+            insert( keyspace, columnFamily, key, (byte[]) null, columnName.getBytes(), value );
+        }
+        else
+        {
+            insert( keyspace, columnFamily, key, superColumnName.getBytes(), columnName.getBytes(), value );
+        }
+
     }
 
     // Yes supercolumn -- bytes version
@@ -378,7 +441,7 @@ public class SimpleCassandraClient
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " inserting " +
+            throw new CassandraException( "Exception inserting " +
                                           keyspace + "|" +
                                           columnFamily + "|" +
                                           key + "|" +
@@ -404,7 +467,7 @@ public class SimpleCassandraClient
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " listing keyspaces: " +
+            throw new CassandraException( "Exception listing keyspaces: " +
                                           e.getMessage() );
 
         }
@@ -453,7 +516,7 @@ public class SimpleCassandraClient
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " describing " +
+            throw new CassandraException( "Exception describing " +
                                           keyspace + ": " +
                                           e.getMessage() );
 
@@ -538,7 +601,7 @@ public class SimpleCassandraClient
         catch( Exception e )
         {
 
-            throw new CassandraException( e.getClass().getName() + " deleting " +
+            throw new CassandraException( "Exception deleting " +
                                           keyspace + "|" +
                                           columnFamily + "|" +
                                           key + "|" +
